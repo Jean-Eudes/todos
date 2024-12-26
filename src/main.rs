@@ -4,25 +4,46 @@
    Ecrire lire de la base
 */
 mod model;
-mod schema;
 
+use crate::model::Todo;
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::{Json, Router};
-use diesel::Connection;
-use diesel::PgConnection;
-use std::env;
-use crate::model::TodosToPersist;
+use axum::{debug_handler, Json, Router};
+use bb8::Pool;
+use bb8_postgres::PostgresConnectionManager;
+use serde::Deserialize;
+use std::sync::Arc;
+use tokio_postgres::{Client, NoTls};
+use std::str::FromStr;
+
+#[derive(Clone)]
+struct AppState {
+    pool: Pool<PostgresConnectionManager<NoTls>>,
+}
 
 #[tokio::main]
 async fn main() {
     let database_url = "postgres://omc_projet:omc_projet@localhost:5432/todos";
-    PgConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+    let config = tokio_postgres::config::Config::from_str(database_url).unwrap();
     // build our application with a route
+    let pg_mgr = PostgresConnectionManager::new(config, NoTls);
+
+    let pool = match Pool::builder()
+        .max_size(30)
+        .build(pg_mgr).await {
+        Ok(pool) => pool,
+        Err(e) => panic!("builder error: {e:?}"),
+    };
+
+    let state = AppState {
+        pool
+    };
+
     let app = Router::new()
         .route("/", get(handler2))
-        .route("/", post(handler));
+        .route("/", post(handler))
+        .with_state(state);
     // run it
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
@@ -32,14 +53,11 @@ async fn main() {
 }
 
 async fn handler(title: String) -> StatusCode {
-
     StatusCode::CREATED
 }
-async fn handler2() -> Json<Vec<TodosToPersist>> {
-    let database_url = "postgres://omc_projet:omc_projet@localhost:5432/todos";
-    let mut connection = PgConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting  to {}", database_url));
 
-    let vec = TodosToPersist::load(&mut connection);
-    Json(vec)
+#[debug_handler]
+async fn handler2(State(state): State<AppState>) -> Json<Vec<Todo>> {
+    let rows = Todo::load(&state.pool).await;
+    Json(rows)
 }

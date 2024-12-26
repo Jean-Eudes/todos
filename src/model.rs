@@ -1,40 +1,35 @@
-use diesel::{PgConnection, Queryable, Selectable};
-use crate::schema::todos::dsl::todos;
-use crate::schema::todos::title;
-use diesel::prelude::*;
+use bb8::Pool;
+use bb8_postgres::PostgresConnectionManager;
 use serde::Serialize;
-/*impl Todo12 {
-    pub fn new(title: String, status: Status) -> Self {
+use tokio_postgres::NoTls;
 
+impl Todo {
+    pub fn new(title: String, status: String) -> Self {
+        Self { title, status }
+    }
+
+    pub async fn load(pool: &Pool<PostgresConnectionManager<NoTls>>) -> Vec<Self> {
+        let conn = pool.get().await.unwrap();
+        let results = conn
+            .query("SELECT title, status from Todos", &[])
+            .await
+            .expect("Error loading posts .");
+
+        results
+            .into_iter()
+            .map(|row| Self {
+                title: row.get(0),
+                status: row.get(1),
+            })
+            .collect()
     }
 }
 
-pub struct Todo12 {
+#[derive(Serialize)]
+pub struct Todo {
     title: String,
-    status: Status,
-}*/
-
-#[derive(Queryable, Selectable, Serialize)]
-#[diesel(table_name = crate::schema::todos)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct TodosToPersist {
-    pub id: i32,
-    pub title: String,
     status: String,
 }
-
-impl TodosToPersist {
-    pub fn load(connection: &mut PgConnection) -> Vec<Self> {
-
-        let results = todos
-            .limit(5)
-            .select(TodosToPersist::as_select())
-            .load(connection)
-            .expect("Error loading posts .");
-        results
-    }
-}
-
 
 pub enum Status {
     Active,
