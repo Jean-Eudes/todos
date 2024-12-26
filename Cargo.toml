@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7.9"
+axum = { version = "0.7.9", features = ["macros"] }
 tokio = { version = "1.42.0", features = ["rt-multi-thread"] }
-diesel = { version = "2.2.6", features = ["postgres"] }
+diesel = { version = "2.2.6", features = ["postgres", "r2d2"] }
 dotenvy = "0.15"
 serde = { version = "1.0.216", features = ["derive"] }
