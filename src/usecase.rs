@@ -52,11 +52,13 @@ mod tests {
     async fn should_cancel_when_state_exists_and_is_pending() {
         // Given
         let mut todo_port = MockTodoPort::new();
-        todo_port.expect_load_by_id()
+        todo_port
+            .expect_load_by_id()
             .with(predicate::eq(1))
             .returning(|id| Some(Todo::new(id, "".to_string(), Status::Pending)));
 
-        todo_port.expect_cancel()
+        todo_port
+            .expect_cancel()
             .with(predicate::eq(1))
             .returning(|_id| Ok(()));
 
@@ -71,7 +73,8 @@ mod tests {
     async fn should_return_not_found_where_todo_not_exist() {
         // Given
         let mut todo_port = MockTodoPort::new();
-        todo_port.expect_load_by_id()
+        todo_port
+            .expect_load_by_id()
             .with(predicate::eq(1))
             .returning(|_id| None);
 
@@ -86,7 +89,8 @@ mod tests {
     async fn should_return_already_cancel_where_todo_is_cancel() {
         // Given
         let mut todo_port = MockTodoPort::new();
-        todo_port.expect_load_by_id()
+        todo_port
+            .expect_load_by_id()
             .with(predicate::eq(1))
             .returning(|id| Some(Todo::new(id, "".to_string(), Status::Cancelled)));
 
