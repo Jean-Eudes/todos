@@ -1,6 +1,5 @@
 use crate::model::Todo;
 use crate::model::TodoPort;
-use crate::repository::TodoAdapter;
 use crate::usecase::{cancel_todo, create_todo, TodoError};
 use crate::{AppState, Data, ResponseBody, TodoRequest, USER};
 use axum::body::Bytes;
@@ -66,15 +65,19 @@ where
 }
 
 #[debug_handler]
-pub async fn fetch(State(state): State<AppState>) -> Json<Vec<TodoResourceV1>> {
-    println!("Iam {}", USER.get().login);
-    Json(
-        TodoAdapter::load(&state.pool)
-            .await
-            .into_iter()
-            .map(TodoResourceV1::from)
-            .collect(),
-    )
+pub async fn fetch(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<TodoResourceV1>>, ProblemDetail> {
+    info!("I am {}", USER.get().login);
+    let result = state
+        .todo_adapter
+        .load()
+        .await
+        .map_err(|err| ProblemDetail::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
+        .into_iter()
+        .map(TodoResourceV1::from)
+        .collect();
+    Ok(Json(result))
 }
 
 #[debug_handler]
@@ -103,14 +106,12 @@ pub async fn fetch_stream(
                 match tx.send(Ok(Frame::data(convert(&vec)))).await {
                     Ok(_) => {}
                     Err(err) => {
-                        eprintln!("{}", err);
                         return Ok(());
                     }
                 }
                 vec.clear();
             }
         }
-        println!("{}", i);
         let _ = tx.send(Ok(Frame::data(convert(&vec)))).await;
 
         // headers based off expensive operation
@@ -166,10 +167,9 @@ pub async fn delete_todo(
                 StatusCode::BAD_REQUEST,
                 String::from("only pending todos can be cancelled"),
             ),
-            TodoError::NotFound => ProblemDetail::new(
-                StatusCode::NOT_FOUND,
-                String::from("Not found"),
-            ),
+            TodoError::NotFound => {
+                ProblemDetail::new(StatusCode::NOT_FOUND, String::from("Not found"))
+            }
             TodoError::DatabaseError => ProblemDetail::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 String::from("problem when persisting data"),

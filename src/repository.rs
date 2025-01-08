@@ -57,7 +57,7 @@ impl TodoPort for TodoAdapter {
         .map(|res| info!("Updated : {}", res.rows_affected()))
     }
 
-    async fn load_stream(& self) -> impl Stream<Item = Result<Todo, String>> {
+    async fn load_stream(&self) -> impl Stream<Item = Result<Todo, String>> {
         query_as!(
             TodoModel,
             r#"SELECT id, status, title, user_id, created_at FROM todos order by id"#
@@ -66,23 +66,23 @@ impl TodoPort for TodoAdapter {
         .map(|res| res.map(Todo::from))
         .map_err(|e| e.to_string())
     }
+
+    async fn load(&self) -> Result<Vec<Todo>, Box<dyn Error>> {
+        Ok(query_as!(
+            TodoModel,
+            r#"SELECT id, status, title, user_id, created_at FROM todos"#
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(Todo::from)
+        .collect())
+    }
 }
 
 impl TodoAdapter {
     pub fn new(pool: Pool<Postgres>) -> Self {
         Self { pool }
-    }
-    pub async fn load(pool: &Pool<Postgres>) -> Vec<Todo> {
-        query_as!(
-            TodoModel,
-            r#"SELECT id, status, title, user_id, created_at FROM todos"#
-        )
-        .fetch_all(pool)
-        .await
-        .unwrap()
-        .into_iter()
-        .map(Todo::from)
-        .collect()
     }
 }
 

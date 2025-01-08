@@ -1,5 +1,5 @@
-use std::error::Error;
 use futures::Stream;
+use std::error::Error;
 use strum_macros::{Display, EnumString};
 
 #[cfg(test)]
@@ -57,17 +57,13 @@ impl Todo {
 #[cfg_attr(test, automock)]
 pub trait TodoPort {
     async fn load_by_id(&self, id: i32) -> Option<Todo>;
-    async fn insert_new_todo(
-        &self,
-        title: String,
-        user_id: i32,
-    ) -> Result<Todo, Box<dyn Error>>;
+    async fn insert_new_todo(&self, title: String, user_id: i32) -> Result<Todo, Box<dyn Error>>;
 
     async fn cancel(&self, id: i32) -> Result<(), String>;
 
-    async fn load_stream(
-        &self,
-    ) -> impl Stream<Item = Result<Todo, String>>;
+    async fn load_stream(&self) -> impl Stream<Item = Result<Todo, String>>;
+
+    async fn load(&self) -> Result<Vec<Todo>, Box<dyn Error>>;
 }
 
 #[derive(Display, EnumString, PartialEq)]
