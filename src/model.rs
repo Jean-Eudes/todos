@@ -4,6 +4,7 @@ use strum_macros::{Display, EnumString};
 
 #[cfg(test)]
 use mockall::automock;
+use sqlx::{Postgres, Transaction};
 
 #[derive(Clone)]
 pub struct User {
@@ -57,7 +58,12 @@ impl Todo {
 #[cfg_attr(test, automock)]
 pub trait TodoPort {
     async fn load_by_id(&self, id: i32) -> Option<Todo>;
-    async fn insert_new_todo(&self, title: String, user_id: i32) -> Result<Todo, Box<dyn Error>>;
+    async fn insert_new_todo<'a, 'b>(
+        &self,
+        transaction: &'a mut Transaction<'b, Postgres>,
+        title: String,
+        user_id: i32,
+    ) -> Result<Todo, Box<dyn Error>>;
 
     async fn cancel(&self, id: i32) -> Result<(), String>;
 
@@ -71,4 +77,32 @@ pub enum Status {
     Active,
     Pending,
     Cancelled,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_cancel_a_pending_task() {
+        // Given
+        let mut pending_task = Todo::new(1, "task 1".to_string(), Status::Pending);
+
+        // When
+        pending_task.cancel();
+
+        // Then
+        assert!(matches!(pending_task.status, Status::Cancelled));
+    }
+    #[test]
+    fn should_not_cancel_a_completing_task() {
+        // Given
+        let mut pending_task = Todo::new(1, "task 1".to_string(), Status::Active);
+
+        // When
+        pending_task.cancel();
+
+        // Then
+        assert!(matches!(pending_task.status, Status::Active));
+    }
 }

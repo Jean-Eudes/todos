@@ -1,6 +1,7 @@
 use crate::model::{Todo, TodoPort};
 use crate::usecase::TodoError::{AlreadyCancel, DatabaseError, NotFound};
-use futures::TryFutureExt;
+use futures::{Stream, TryFutureExt};
+use sqlx::{Pool, Postgres};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -23,23 +24,58 @@ impl Display for TodoError {
     }
 }
 
-pub async fn cancel_todo(port: &impl TodoPort, id: i32, _user_id: i32) -> Result<(), TodoError> {
-    if let Some(mut todo) = port.load_by_id(id).await {
-        if !todo.cancel() {
-            return Err(AlreadyCancel);
-        }
-        port.cancel(todo.id()).map_err(|_err| DatabaseError).await
-    } else {
-        Err(NotFound)
-    }
+pub struct TodoUseCase<T>
+where
+    T: TodoPort,
+{
+    todo_port: T,
 }
 
-pub async fn create_todo(
-    port: &impl TodoPort,
-    title: String,
-    user_id: i32,
-) -> Result<Todo, Box<dyn Error>> {
-    port.insert_new_todo(title, user_id).await
+impl<T> TodoUseCase<T>
+where
+    T: TodoPort,
+{
+    pub fn new(todo_port: T) -> Self {
+        TodoUseCase { todo_port }
+    }
+
+    pub async fn cancel_todo(&self, id: i32, _user_id: i32) -> Result<(), TodoError> {
+        if let Some(mut todo) = self.todo_port.load_by_id(id).await {
+            if !todo.cancel() {
+                return Err(AlreadyCancel);
+            }
+            self.todo_port
+                .cancel(todo.id())
+                .map_err(|_err| DatabaseError)
+                .await
+        } else {
+            Err(NotFound)
+        }
+    }
+
+    pub async fn create_todo(
+        &self,
+        pool: Pool<Postgres>,
+        title: String,
+        user_id: i32,
+    ) -> Result<Todo, Box<dyn Error>> {
+        let mut transaction = pool.clone().begin().await.unwrap();
+        let todo = self
+            .todo_port
+            .insert_new_todo(&mut transaction, title.clone(), user_id)
+            .await?;
+        transaction.commit().await.unwrap();
+        Ok(todo)
+    }
+
+    pub async fn load(&self) -> Result<Vec<Todo>, Box<dyn Error>> {
+        let todo = self.todo_port.load().await?;
+        Ok(todo)
+    }
+    pub async fn load_stream(&self) -> impl Stream<Item = Result<Todo, String>>  + use<'_, T> {
+        self.todo_port.load_stream().await
+    }
+    
 }
 
 #[cfg(test)]
@@ -62,8 +98,10 @@ mod tests {
             .with(predicate::eq(1))
             .returning(|_id| Ok(()));
 
+        let use_case = TodoUseCase::new(todo_port);
+
         // When
-        let todo = cancel_todo(&todo_port, 1, 1).await;
+        let todo = use_case.cancel_todo(1, 1).await;
 
         // Then
         assert_eq!(Ok(()), todo)
@@ -77,9 +115,10 @@ mod tests {
             .expect_load_by_id()
             .with(predicate::eq(1))
             .returning(|_id| None);
+        let use_case = TodoUseCase::new(todo_port);
 
         // When
-        let todo = cancel_todo(&todo_port, 1, 1).await;
+        let todo = use_case.cancel_todo(1, 1).await;
 
         // Then
         assert_eq!(Err(NotFound), todo)
@@ -94,8 +133,10 @@ mod tests {
             .with(predicate::eq(1))
             .returning(|id| Some(Todo::new(id, "".to_string(), Status::Cancelled)));
 
+        let use_case = TodoUseCase::new(todo_port);
+
         // When
-        let todo = cancel_todo(&todo_port, 1, 1).await;
+        let todo = use_case.cancel_todo(1, 1).await;
 
         // Then
         assert_eq!(Err(AlreadyCancel), todo)

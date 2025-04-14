@@ -28,7 +28,7 @@ pub async fn auth(
 }
 async fn authorize_current_user(pool: &Pool<Postgres>, auth_token: &str) -> Option<User> {
     let vec = auth_token.split("Basic ").collect::<Vec<_>>();
-    println!("{}", auth_token);
+    dbg!(auth_token);
     println!("{}", vec.len());
     let token = vec.get(1).unwrap();
     println!("{}", token);

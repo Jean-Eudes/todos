@@ -1,6 +1,6 @@
 use crate::model::Todo;
 use crate::model::TodoPort;
-use crate::usecase::{cancel_todo, create_todo, TodoError};
+use crate::usecase::TodoError;
 use crate::{AppState, Data, ResponseBody, TodoRequest, USER};
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -70,7 +70,7 @@ pub async fn fetch(
 ) -> Result<Json<Vec<TodoResourceV1>>, ProblemDetail> {
     info!("I am {}", USER.get().login);
     let result = state
-        .todo_adapter
+        .todo_use_case
         .load()
         .await
         .map_err(|err| ProblemDetail::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
@@ -90,7 +90,7 @@ pub async fn fetch_stream(
     tokio::spawn(async move {
         // some expensive operations
         let mut stream = state
-            .todo_adapter
+            .todo_use_case
             .load_stream()
             .await
             .map(|res| res.map(TodoResourceV1::from));
@@ -124,7 +124,7 @@ pub async fn fetch_stream(
     let stream = ReceiverStream::new(rx);
     let body = StreamBody::new(stream);
 
-    println!("fin");
+    info!("fin");
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -144,8 +144,9 @@ pub async fn create_todos(
         title = todo_request.title,
         user = user.login
     );
-    let todo_adapter = state.todo_adapter.deref();
-    create_todo(todo_adapter, todo_request.title, user.id)
+    state
+        .todo_use_case
+        .create_todo(state.pool, todo_request.title, user.id)
         .await
         .map_err(|e| {
             error!("Error caught {:?}", e);
@@ -160,7 +161,9 @@ pub async fn delete_todo(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<(), ProblemDetail> {
-    cancel_todo(state.todo_adapter.deref(), id, USER.get().id)
+    state
+        .todo_use_case
+        .cancel_todo(id, USER.get().id)
         .await
         .map_err(|err| match err {
             TodoError::AlreadyCancel => ProblemDetail::new(

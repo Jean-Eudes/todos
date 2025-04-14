@@ -1,8 +1,9 @@
 use crate::model::{Status, Todo, TodoPort, User};
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt};
-use sqlx::{query, query_as, FromRow, Pool, Postgres};
+use sqlx::{query, query_as, FromRow, Pool, Postgres, Transaction};
 use std::error::Error;
+use std::ops::DerefMut;
 use std::str::FromStr;
 use tokio_stream::Stream;
 use tracing::info;
@@ -33,15 +34,19 @@ impl TodoPort for TodoAdapter {
         .map(Todo::from)
     }
 
-    async fn insert_new_todo(&self, title: String, user_id: i32) -> Result<Todo, Box<dyn Error>> {
+    async fn insert_new_todo<'a>(
+        &self,
+        transaction: &mut Transaction<'a, Postgres>,
+        title: String,
+        user_id: i32,
+    ) -> Result<Todo, Box<dyn Error>> {
         let result = query!(
             r#"INSERT INTO todos (status, title, user_id, created_at) VALUES ('Pending', $1, $2, $3) RETURNING ID"#,
             title,
             user_id,
             Utc::now()
-        ).fetch_one(&self.pool)
+        ).fetch_one(transaction.deref_mut())
             .await?;
-
         Ok(Todo::new(result.id, title, Status::Pending))
     }
 
@@ -118,6 +123,7 @@ impl UserDao {
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
     use std::sync::{Arc, Mutex};
     use std::thread;
 
@@ -133,7 +139,7 @@ mod tests {
             let counter_cloned = counter.clone();
             let handle = thread::spawn(move || {
                 let mut guard = counter_cloned.lock().unwrap();
-                guard.count = guard.count + 1;
+                guard.count += 1;
                 println!("Hello, world! {:?}", guard.count);
             });
             handles.push(handle);

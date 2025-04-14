@@ -8,8 +8,9 @@ use crate::middlewares::auth;
 use crate::model::User;
 use crate::repository::TodoAdapter;
 use crate::resource::{create_todos, delete_todo, fetch, fetch_stream};
+use crate::usecase::TodoUseCase;
 use axum::body::Bytes;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, Route};
 use axum::{middleware, Router};
 use dotenv::dotenv;
 use http_body_util::StreamBody;
@@ -31,7 +32,7 @@ type ResponseBody = StreamBody<ReceiverStream<Data>>;
 #[derive(Clone)]
 struct AppState {
     pool: Pool<Postgres>,
-    todo_adapter: Arc<TodoAdapter>,
+    todo_use_case: Arc<TodoUseCase<TodoAdapter>>,
 }
 
 #[derive(Deserialize)]
@@ -63,9 +64,11 @@ async fn main() {
     let _result = sqlx::migrate!().run(&pool).await;
 
     // build our application with a route
+    let adapter = TodoAdapter::new(pool.clone());
+    let use_case = TodoUseCase::new(adapter);
     let state = AppState {
         pool: pool.clone(),
-        todo_adapter: Arc::new(TodoAdapter::new(pool)),
+        todo_use_case: Arc::new(use_case),
     };
     let app = Router::new()
         .route("/", get(fetch))
